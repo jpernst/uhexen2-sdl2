@@ -1,0 +1,14 @@
+*.o
+*.a
+engine/hexen2/glhexen2
+engine/hexen2/glhexen2.exe
+engine/hexen2/hexen2
+engine/hexen2/hexen2.exe
+engine/hexenworld/client/glhwcl
+engine/hexenworld/client/glhwcl.exe
+engine/hexenworld/client/hwcl
+engine/hexenworld/client/hwcl.exe
+engine/hexenworld/server/hwsv
+engine/hexenworld/server/hwsv.exe
+
+.vscode/**

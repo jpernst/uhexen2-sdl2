@@ -28,9 +28,21 @@
 #endif	/* SDLQUAKE */
 
 #if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
+
+#if SDLQUAKE == 2
+#include <SDL2/SDL.h>
+#else
 #include <SDL/SDL.h>
+#endif
+
+#else
+
+#if SDLQUAKE == 2
+#include "SDL2/SDL.h"
 #else
 #include "SDL.h"
+#endif
+
 #endif
 
 /* =================================================================

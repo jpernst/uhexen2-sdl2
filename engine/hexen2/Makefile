@@ -48,8 +48,18 @@ OSLIBS:=$(UHEXEN2_TOP)/oslibs
 
 # X directory
 X11BASE    =/usr/X11R6
+
+# which major SDL version to use
+# ignored for legacy platforms without SDL2 support
+SDL_API    = 2
+
 # the sdl-config command
+ifeq ($(SDL_API),2)
+SDL_CONFIG =sdl2-config
+else
 SDL_CONFIG =sdl-config
+endif
+
 SDL_CFLAGS = $(shell $(SDL_CONFIG) --cflags 2> /dev/null)
 SDL_LIBS   = $(shell $(SDL_CONFIG) --libs 2> /dev/null)
 
@@ -348,7 +358,7 @@ endif
 
 # Unix builds rely on SDL:
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 # not relying on sdl-config command and assuming
 # /Library/Frameworks/SDL.framework is available
 SDL_CFLAGS =-D_GNU_SOURCE=1 -D_THREAD_SAFE
@@ -453,7 +463,7 @@ endif
 
 # Unix builds rely on SDL:
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 
@@ -486,6 +496,7 @@ LDFLAGS += -s
 CFLAGS  += -fno-omit-frame-pointer
 endif
 # using SDL for now:
+SDL_API=1
 SDL_CFLAGS=-I$(OSLIBS)/os2/SDL/include
 SDL_LIBS = -L$(OSLIBS)/os2/SDL/lib -lSDL12
 USE_SDLCD=yes
@@ -511,7 +522,7 @@ endif
 endif
 
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 
@@ -836,6 +847,7 @@ ifeq ($(TARGET_OS),morphos)
 
 # MorphOS builds can use SDL or native code
 USE_SDL=no
+SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
 USE_SDLAUDIO=no
@@ -895,7 +907,7 @@ endif
 
 ifeq ($(USE_SDL),yes)
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 endif
@@ -912,6 +924,7 @@ ifeq ($(TARGET_OS),aros)
 
 # AROS builds can use SDL or native code
 USE_SDL=no
+SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
 USE_SDLAUDIO=no
@@ -977,7 +990,7 @@ endif
 
 ifeq ($(USE_SDL),yes)
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 endif
@@ -997,6 +1010,7 @@ USE_CLIB2=yes
 
 # Don't use SDL on AmigaOS
 USE_SDL=no
+SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
 USE_SDLAUDIO=no
@@ -1079,7 +1093,7 @@ endif
 
 ifeq ($(USE_SDL),yes)
 # SDLQUAKE must be defined for all SDL using platforms/targets
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 endif

@@ -11,4 +11,5 @@ engine/hexenworld/client/hwcl.exe
 engine/hexenworld/server/hwsv
 engine/hexenworld/server/hwsv.exe
 
+compile_commands.json
 .vscode/**

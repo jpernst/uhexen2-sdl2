@@ -116,8 +116,13 @@ typedef struct {
 } attributes_t;
 static attributes_t	vid_attribs;
 
-static const SDL_VideoInfo	*vid_info;
+#if SDLQUAKE == 2
+SDL_Window	*screen;
+SDL_GLContext glcontext;
+#else
 static SDL_Surface	*screen;
+static const SDL_VideoInfo	*vid_info;
+#endif
 static qboolean	vid_menu_fs;
 static qboolean	fs_toggle_works = true;
 
@@ -297,16 +302,30 @@ static void VID_SetIcon (void)
 	if (icon == NULL)
 		return;
 
+#if SDLQUAKE == 2
+	SDL_SetColorKey(icon, SDL_TRUE, 0);
+#else
 	SDL_SetColorKey(icon, SDL_SRCCOLORKEY, 0);
+#endif
+	
 
 	color.r = 255;
 	color.g = 255;
 	color.b = 255;
-	SDL_SetColors(icon, &color, 0, 1);	/* just in case */
+	/* just in case */
+#if SDLQUAKE == 2
+	SDL_SetPaletteColors(icon->format->palette, &color, 0, 1);
+#else
+	SDL_SetColors(icon, &color, 0, 1);	
+#endif
 	color.r = 192;
 	color.g = 0;
 	color.b = 0;
+#if SDLQUAKE == 2
+	SDL_SetPaletteColors(icon->format->palette, &color, 1, 1);
+#else
 	SDL_SetColors(icon, &color, 1, 1);
+#endif
 
 	ptr = (Uint8 *)icon->pixels;
 	/* one bit represents a pixel, black or white:  each
@@ -320,8 +339,13 @@ static void VID_SetIcon (void)
 		}
 	}
 
+#if SDLQUAKE == 2
+	SDL_SetWindowIcon(screen, icon);
+#else
 	SDL_WM_SetIcon(icon, NULL);
+#endif
 	SDL_FreeSurface(icon);
+
 #endif /* !OSX */
 }
 
@@ -403,13 +427,13 @@ static qboolean VID_SetMode (int modenum)
 {
 	Uint32	flags;
 	int	i, is_fullscreen;
+#if SDLQUAKE == 2
+	int display_index;
+	SDL_DisplayMode desktop_mode;
+	int screen_w, screen_h;
+#endif
 
 	in_mode_set = true;
-
-	//flags = (SDL_OPENGL|SDL_NOFRAME);
-	flags = (SDL_OPENGL);
-	if (vid_config_fscr.integer)
-		flags |= SDL_FULLSCREEN;
 
 	// setup the attributes
 	if (bpp >= 32)
@@ -443,6 +467,64 @@ static qboolean VID_SetMode (int modenum)
 
 	Con_SafePrintf ("Requested mode %d: %dx%dx%d\n", modenum, modelist[modenum].width, modelist[modenum].height, bpp);
 
+#if SDLQUAKE == 2
+	// Create the window without the fullscreen flag first so we can query its display and check the desktop resolution
+	screen = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL);
+
+	// Start with empty flags since the window is already created with OpenGL.
+	flags = 0;
+	if (vid_config_fscr.integer)
+	{
+		flags = SDL_WINDOW_FULLSCREEN;
+
+		// Try to check the desktop resolution. If it matches the window size, use a borderless window
+		display_index = SDL_GetWindowDisplayIndex(screen);
+		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
+		{
+			SDL_GetWindowSize(screen, &screen_w, &screen_h);
+			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
+			{
+				flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
+				Con_Printf ("Fullscreen res matches desktop; using borderless window\n");
+			}
+		}
+		else
+			Con_Printf ("Failed to query desktop display mode; using native fullscreen\n");
+	}
+
+	// Put the OpenGL flag back in case we need to remake the window.
+	flags |= SDL_WINDOW_OPENGL;
+
+	if (!screen)
+	{
+		if (!multisample)
+			Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
+		else
+		{
+			Con_SafePrintf ("multisample window failed\n");
+			multisample = 0;
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisample);
+			screen = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
+			if (!screen)
+				Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
+		}
+	}
+
+	glcontext = SDL_GL_CreateContext(screen);
+	if (!glcontext)
+		Sys_Error ("Couldn't create gl context: %s", SDL_GetError());
+
+	VID_SetIcon();
+	SDL_SetWindowTitle(screen, WM_TITLEBAR_TEXT);
+
+	is_fullscreen = (SDL_GetWindowFlags(screen) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) ? 1 : 0;
+#else
+	//flags = (SDL_OPENGL|SDL_NOFRAME);
+	flags = (SDL_OPENGL);
+	if (vid_config_fscr.integer)
+		flags |= SDL_FULLSCREEN;
+
 	VID_SetIcon();
 
 	screen = SDL_SetVideoMode (modelist[modenum].width, modelist[modenum].height, bpp, flags);
@@ -464,9 +546,13 @@ static qboolean VID_SetMode (int modenum)
 		}
 	}
 
+	is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
+
+	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_INTF_TEXT);
+#endif
+
 	// set vid_modenum properly and adjust other vars
 	vid_modenum = modenum;
-	is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
 	modestate = (is_fullscreen) ? MS_FULLDIB : MS_WINDOWED;
 	Cvar_SetValueQuick (&vid_config_glx, modelist[vid_modenum].width);
 	Cvar_SetValueQuick (&vid_config_gly, modelist[vid_modenum].height);
@@ -485,8 +571,6 @@ static qboolean VID_SetMode (int modenum)
 		Con_SafePrintf ("multisample buffer with %i samples\n", multisample);
 	}
 	Cvar_SetValueQuick (&vid_config_fsaa, multisample);
-
-	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_ICON_TEXT);
 
 	IN_HideMouse ();
 
@@ -660,12 +744,14 @@ static void VID_InitGamma (void)
 		fx_gamma = VID_Check3dfxGamma();
 	if (!fx_gamma)
 	{
+#if SDLQUAKE < 2
 #if USE_GAMMA_RAMPS
 		gammaworks	= (SDL_GetGammaRamp(orig_ramps[0], orig_ramps[1], orig_ramps[2]) == 0);
 		if (gammaworks)
 		    gammaworks	= (SDL_SetGammaRamp(orig_ramps[0], orig_ramps[1], orig_ramps[2]) == 0);
 #else
 		gammaworks	= (SDL_SetGamma(1, 1, 1) == 0);
+#endif
 #endif
 	}
 
@@ -681,10 +767,12 @@ static void VID_ShutdownGamma (void)
 /*	if (fx_gamma) do3dfxGammaCtrl(1);*/
 #endif
 	Shutdown_3dfxGamma();
+#if SDLQUAKE < 2
 #if USE_GAMMA_RAMPS	/* restore hw-gamma */
 	if (gammaworks) SDL_SetGammaRamp(orig_ramps[0], orig_ramps[1], orig_ramps[2]);
 #else
 	if (gammaworks) SDL_SetGamma (1,1,1);
+#endif
 #endif
 }
 
@@ -699,10 +787,12 @@ static void VID_SetGamma (void)
 #else
 	if (fx_gamma) do3dfxGammaCtrl(value);
 #endif
+#if SDLQUAKE < 2
 #if USE_GAMMA_RAMPS
 	if (gammaworks) SDL_SetGammaRamp(ramps[0], ramps[1], ramps[2]);
 #else
 	if (gammaworks) SDL_SetGamma(value,value,value);
+#endif
 #endif
 }
 
@@ -1030,7 +1120,12 @@ void GL_BeginRendering (int *x, int *y, int *width, int *height)
 void GL_EndRendering (void)
 {
 	if (!scr_skipupdate)
+#if SDLQUAKE == 2
+		SDL_GL_SwapWindow(screen);
+#else
 		SDL_GL_SwapBuffers();
+#endif
+
 
 // handle the mouse state when windowed if that's changed
 	if (_enable_mouse.integer != enable_mouse /*&& modestate == MS_WINDOWED*/)
@@ -1271,7 +1366,12 @@ static void VID_ChangeVideoMode (int newmode)
 	IN_ShowMouse ();
 
 	// Kill device and rendering contexts
+#if SDLQUAKE == 2
+	SDL_GL_DeleteContext(glcontext);
+	SDL_DestroyWindow(screen);
+#else
 	SDL_FreeSurface(screen);
+#endif
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);	// also unloads the opengl driver
 
 	// re-init sdl_video, set the mode and re-init opengl
@@ -1283,7 +1383,9 @@ static void VID_ChangeVideoMode (int newmode)
 #endif
 	VID_SetMode (newmode);
 	// re-get the video info since we re-inited sdl_video
+#if SDLQUAKE < 2
 	vid_info = SDL_GetVideoInfo();
+#endif
 
 	// Reload graphics wad file (Draw_PicFromWad writes glpic_t data (sizes,
 	// texnums) right on top of the original pic data, so the pic data will
@@ -1354,10 +1456,68 @@ static int sort_modes (const void *arg1, const void *arg2)
 	return a1->width - a2->width;
 }
 
-static void VID_PrepareModes (SDL_Rect **sdl_modes)
+static void VID_PrepareModes (void)
 {
 	int	i, j;
 	qboolean	not_multiple;
+#if SDLQUAKE == 2
+	int k;
+	SDL_DisplayMode	mode;
+	SDL_Rect	mode_rects[MAX_MODE_LIST];
+	SDL_Rect	*ptr_array[MAX_MODE_LIST + 1];
+	SDL_Rect	**sdl_modes;
+#endif
+
+#if SDLQUAKE == 2
+	// SDL2 does not have a function to get the full modelist, so we must build it manually.
+
+	num_fmodes = 0;
+
+	// Fill the list with all modes supported by the first display.
+	for (i = 0; i < SDL_GetNumDisplayModes(0) && i < MAX_MODE_LIST; i++)
+	{
+		SDL_GetDisplayMode(0, i, &mode);
+		mode_rects[num_fmodes].x = 0;
+		mode_rects[num_fmodes].y = 0;
+		mode_rects[num_fmodes].w = mode.w;
+		mode_rects[num_fmodes].h = mode.h;
+		num_fmodes++;
+	}
+
+	// Check the other displays and add any modes that aren't already in the list
+	for (i = 1; i < SDL_GetNumVideoDisplays(); i++)
+		for (j = 0; j < SDL_GetNumDisplayModes(i) && num_fmodes < MAX_MODE_LIST; j++)
+		{
+			SDL_GetDisplayMode(i, j, &mode);
+			mode_rects[num_fmodes].x = 0;
+			mode_rects[num_fmodes].y = 0;
+			mode_rects[num_fmodes].w = mode.w;
+			mode_rects[num_fmodes].h = mode.h;
+			num_fmodes++;
+
+			for (k = 0; k < num_fmodes; k++)
+			{
+				if (mode.w == mode_rects[k].w && mode.h == mode_rects[k].h)
+				{
+					num_fmodes--;
+					break;
+				}
+			}
+		}
+
+	if (num_fmodes > 0)
+	{
+		for (i = 0; i < num_fmodes; i++)
+			ptr_array[i] = &mode_rects[i];
+		ptr_array[num_fmodes] = NULL;
+		sdl_modes = ptr_array;
+	}
+	else
+		sdl_modes = NULL;
+#else
+	// retrieve the list of fullscreen modes
+	sdl_modes = SDL_ListModes(NULL, SDL_OPENGL|SDL_FULLSCREEN);
+#endif
 
 	num_fmodes = 0;
 	num_wmodes = 0;
@@ -1544,7 +1704,6 @@ void	VID_Init (const unsigned char *palette)
 	static char fxglide_env_nosplash[32] = "FX_GLIDE_NO_SPLASH=1";
 #endif
 	int	i, temp, width, height;
-	SDL_Rect	**enumlist;
 	const SDL_version	*sdl_version;
 	const char	*read_vars[] = {
 				"vid_config_fscr",
@@ -1581,9 +1740,13 @@ void	VID_Init (const unsigned char *palette)
 	vid.numpages = 2;
 
 	// see if the SDL version we linked to is multisampling-capable
+#if SDLQUAKE == 2
+	sdl_has_multisample = true;
+#else
 	sdl_version = SDL_Linked_Version();
 	if (SDL_VERSIONNUM(sdl_version->major,sdl_version->minor,sdl_version->patch) >= SDL_VER_WITH_MULTISAMPLING)
 		sdl_has_multisample = true;
+#endif
 
 #ifndef __MORPHOS__
 	// enable vsync for nvidia geforce or newer - S.A
@@ -1626,10 +1789,9 @@ void	VID_Init (const unsigned char *palette)
 
 	// this will contain the "best bpp" for the current display
 	// make sure to re-retrieve it if you ever re-init sdl_video
+#if SDLQUAKE < 2
 	vid_info = SDL_GetVideoInfo();
-
-	// retrieve the list of fullscreen modes
-	enumlist = SDL_ListModes(NULL, SDL_OPENGL|SDL_FULLSCREEN);
+#endif
 
 	i = COM_CheckParm("-bpp");
 	if (i && i < com_argc-1)
@@ -1638,7 +1800,7 @@ void	VID_Init (const unsigned char *palette)
 	}
 
 	// prepare the modelists, find the actual modenum for vid_default
-	VID_PrepareModes(enumlist);
+	VID_PrepareModes();
 
 	// set vid_mode to our safe default first
 	Cvar_SetValueQuick (&vid_mode, vid_default);
@@ -1774,6 +1936,14 @@ void	VID_Init (const unsigned char *palette)
 void	VID_Shutdown (void)
 {
 	VID_ShutdownGamma();
+
+#if SDLQUAKE == 2
+	if (glcontext)
+		SDL_GL_DeleteContext(glcontext);
+	if (screen)
+		SDL_DestroyWindow(screen);
+#endif
+
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
@@ -1789,6 +1959,12 @@ extern qboolean menu_disabled_mouse;
 void VID_ToggleFullscreen (void)
 {
 	int	is_fullscreen;
+#if SDLQUAKE == 2
+	int display_index;
+	SDL_DisplayMode desktop_mode;
+	int screen_w, screen_h;
+	int fullscreen_flag;
+#endif
 
 	if (!fs_toggle_works)
 		return;
@@ -1799,11 +1975,43 @@ void VID_ToggleFullscreen (void)
 
 	S_ClearBuffer ();
 
+#if SDLQUAKE == 2
+	is_fullscreen = SDL_GetWindowFlags(screen) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+
+	// If we're switching to fullscreen, check to see if our window has the same size as the desktop.
+	// If it does, use a borderless window instead of "real" fullscreen for better wm integration.
+	if (!is_fullscreen)
+	{
+		fullscreen_flag = SDL_WINDOW_FULLSCREEN;
+
+		display_index = SDL_GetWindowDisplayIndex(screen);
+		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
+		{
+			SDL_GetWindowSize(screen, &screen_w, &screen_h);
+			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
+			{
+				fullscreen_flag = SDL_WINDOW_FULLSCREEN_DESKTOP;
+				Con_Printf ("Fullscreen res matches desktop; using borderless window\n");
+			}
+		}
+		else
+			Con_Printf ("Failed to query desktop display mode; using native fullscreen\n");
+	}
+	else
+		fullscreen_flag = 0;
+
+	if (SDL_SetWindowFullscreen(screen, fullscreen_flag) == 0)
+#else
 	// This doesn't seem to cause any trouble even
 	// with is_3dfx == true and FX_GLX_MESA == f
 	if (SDL_WM_ToggleFullScreen(screen) == 1)
+#endif
 	{
+#if SDLQUAKE == 2
+		is_fullscreen = !is_fullscreen;
+#else
 		is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
+#endif
 		Cvar_SetValueQuick(&vid_config_fscr, is_fullscreen);
 		modestate = (is_fullscreen) ? MS_FULLDIB : MS_WINDOWED;
 		if (is_fullscreen)

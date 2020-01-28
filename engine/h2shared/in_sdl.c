@@ -27,6 +27,10 @@
 #include "quakedef.h"
 
 
+#if SDLQUAKE == 2
+extern SDL_Window *screen;
+#endif
+
 static qboolean	prev_gamekey;
 
 /* mouse variables */
@@ -190,7 +194,11 @@ void IN_ActivateMouse (void)
 		{
 			mouseactivatetoggle = true;
 			mouseactive = true;
+#if SDLQUAKE == 2
+			SDL_SetRelativeMouseMode(SDL_TRUE);
+#else
 			SDL_WM_GrabInput (SDL_GRAB_ON);
+#endif
 		}
 	    }
 	}
@@ -215,7 +223,11 @@ void IN_DeactivateMouse (void)
 	    if (mouseactivatetoggle) {
 		mouseactivatetoggle = false;
 		mouseactive = false;
+#if SDLQUAKE == 2
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+#else
 		SDL_WM_GrabInput (SDL_GRAB_OFF);
+#endif
 	    }
 	}
 
@@ -232,7 +244,11 @@ static void IN_StartupMouse (void)
 /*	IN_HideMouse ();*/
 	if (safemode || COM_CheckParm ("-nomouse"))
 	{
+#if SDLQUAKE == 2
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+#else
 		SDL_WM_GrabInput (SDL_GRAB_OFF);
+#endif
 		return;
 	}
 
@@ -242,7 +258,11 @@ static void IN_StartupMouse (void)
 	{
 		mouseactivatetoggle = true;
 		mouseactive = true;
+#if SDLQUAKE == 2
+		SDL_SetRelativeMouseMode(SDL_TRUE);
+#else
 		SDL_WM_GrabInput (SDL_GRAB_ON);
+#endif
 		SDL_GetRelativeMouseState (NULL, NULL);
 	}
 }
@@ -298,8 +318,10 @@ void IN_Init (void)
 	IN_StartupJoystick ();
 
 	prev_gamekey = Key_IsGameKey();
+#if SDLQUAKE < 2
 	SDL_EnableUNICODE (!prev_gamekey);
 	SDL_EnableKeyRepeat (SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL*2);
+#endif
 }
 
 /*
@@ -331,8 +353,10 @@ void IN_ReInit (void)
 	IN_StartupMouse ();
 
 	prev_gamekey = Key_IsGameKey();
+#if SDLQUAKE < 2
 	SDL_EnableUNICODE (!prev_gamekey);
 	SDL_EnableKeyRepeat (SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL*2);
+#endif
 
 	/* no need for joystick to reinit */
 }
@@ -433,7 +457,11 @@ void IN_Move (usercmd_t *cmd)
 		return;
 	}
 
+#if SDLQUAKE == 2
+	app_active = (SDL_GetWindowFlags(screen) & SDL_WINDOW_SHOWN) != 0;
+#else
 	app_active = ((SDL_GetAppState() & SDL_APPACTIVE) != 0);
+#endif
 	x = 0;
 	y = 0;
 
@@ -478,7 +506,11 @@ static void IN_StartupJoystick (void)
 	Con_Printf ("SDL_Joystick: %d devices are reported:\n", joy_available);
 	for (i = 0; i < joy_available; i++)
 	{
+#if SDLQUAKE == 2
+		Con_Printf("#%d: \"%s\"\n", i, SDL_JoystickNameForIndex(i));
+#else
 		Con_Printf("#%d: \"%s\"\n", i, SDL_JoystickName(i));
+#endif
 	}
 
 	trackballactive = true;
@@ -528,7 +560,11 @@ static void IN_Callback_JoyIndex (cvar_t *var)
 		{
 			int numaxes, numbtns, numballs, numhats;
 			Con_Printf("joystick open ");
+#if SDLQUAKE == 2
+			Con_Printf("#%d: \"%s\"\n", idx, SDL_JoystickNameForIndex(idx));
+#else
 			Con_Printf("#%d: \"%s\"\n", idx, SDL_JoystickName(idx));
+#endif
 			numaxes = SDL_JoystickNumAxes(joy_id);
 			numbtns = SDL_JoystickNumButtons(joy_id);
 			numballs= SDL_JoystickNumBalls(joy_id);
@@ -819,13 +855,28 @@ void IN_SendKeyEvents (void)
 	if ((gamekey = Key_IsGameKey()) != prev_gamekey)
 	{
 		prev_gamekey = gamekey;
+#if SDLQUAKE < 2
 		SDL_EnableUNICODE(!gamekey);
+#endif
 	}
 
 	while (SDL_PollEvent(&event))
 	{
 		switch (event.type)
 		{
+#if SDLQUAKE == 2
+		case SDL_WINDOWEVENT:
+			switch (event.window.event)
+			{
+			case SDL_WINDOWEVENT_FOCUS_GAINED:
+				S_UnblockSound();
+				break;
+			case SDL_WINDOWEVENT_FOCUS_LOST:
+				S_BlockSound();
+				break;
+			}
+			break;
+#else
 		case SDL_ACTIVEEVENT:
 			if (event.active.state & (SDL_APPINPUTFOCUS|SDL_APPACTIVE))
 			{
@@ -834,6 +885,7 @@ void IN_SendKeyEvents (void)
 				else	S_BlockSound();
 			}
 			break;
+#endif
 
 		case SDL_KEYDOWN:
 			if ((event.key.keysym.sym == SDLK_RETURN) &&
@@ -851,8 +903,12 @@ void IN_SendKeyEvents (void)
 			if ((event.key.keysym.sym == SDLK_g) &&
 			    (event.key.keysym.mod & KMOD_CTRL))
 			{
+#if SDLQUAKE == 2
+				SDL_SetRelativeMouseMode(!SDL_GetRelativeMouseMode());
+#else
 				SDL_WM_GrabInput((SDL_WM_GrabInput (SDL_GRAB_QUERY) == SDL_GRAB_ON) ?
 									  SDL_GRAB_OFF : SDL_GRAB_ON);
+#endif
 				break;
 			}
 		/* fallthrough */
@@ -861,6 +917,7 @@ void IN_SendKeyEvents (void)
 			state = event.key.state;
 			modstate = SDL_GetModState();
 
+#if SDLQUAKE < 2
 			if (event.key.keysym.unicode != 0)
 			{
 				if ((event.key.keysym.unicode & 0xFF80) == 0)
@@ -888,6 +945,7 @@ void IN_SendKeyEvents (void)
 				/* else: it's an international character */
 			}
 			/*printf("You pressed %s (%d) (%c)\n", SDL_GetKeyName(sym), sym, sym);*/
+#endif
 
 			switch (sym)
 			{
@@ -933,7 +991,9 @@ void IN_SendKeyEvents (void)
 			case SDLK_F12:
 				sym = K_F12;
 				break;
+#if SDLQUAKE < 2
 			case SDLK_BREAK:
+#endif
 			case SDLK_PAUSE:
 				sym = K_PAUSE;
 				break;
@@ -976,61 +1036,110 @@ void IN_SendKeyEvents (void)
 			case SDLK_LALT:
 				sym = K_ALT;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_RGUI:
+			case SDLK_LGUI:
+#else
 			case SDLK_RMETA:
 			case SDLK_LMETA:
+#endif
 				sym = K_COMMAND;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_NUMLOCKCLEAR:
+#else
 			case SDLK_NUMLOCK:
+#endif
 				if (gamekey)
 					sym = K_KP_NUMLOCK;
 				else	sym = 0;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_0:
+#else
 			case SDLK_KP0:
+#endif
 				if (gamekey)
 					sym = K_KP_INS;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_0 : K_INS;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_1:
+#else
 			case SDLK_KP1:
+#endif
 				if (gamekey)
 					sym = K_KP_END;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_1 : K_END;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_2:
+#else
 			case SDLK_KP2:
+#endif
 				if (gamekey)
 					sym = K_KP_DOWNARROW;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_2 : K_DOWNARROW;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_3:
+#else
 			case SDLK_KP3:
+#endif
 				if (gamekey)
 					sym = K_KP_PGDN;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_3 : K_PGDN;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_4:
+#else
 			case SDLK_KP4:
+#endif
 				if (gamekey)
 					sym = K_KP_LEFTARROW;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_4 : K_LEFTARROW;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_5:
+#else
 			case SDLK_KP5:
+#endif
 				if (gamekey)
 					sym = K_KP_5;
 				else	sym = SDLK_5;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_6:
+#else
 			case SDLK_KP6:
+#endif
 				if (gamekey)
 					sym = K_KP_RIGHTARROW;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_6 : K_RIGHTARROW;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_7:
+#else
 			case SDLK_KP7:
+#endif
 				if (gamekey)
 					sym = K_KP_HOME;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_7 : K_HOME;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_8:
+#else
 			case SDLK_KP8:
+#endif
 				if (gamekey)
 					sym = K_KP_UPARROW;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_8 : K_UPARROW;
 				break;
+#if SDLQUAKE == 2
+			case SDLK_KP_9:
+#else
 			case SDLK_KP9:
+#endif
 				if (gamekey)
 					sym = K_KP_PGUP;
 				else	sym = (modstate & KMOD_NUM) ? SDLK_9 : K_PGUP;
@@ -1070,15 +1179,19 @@ void IN_SendKeyEvents (void)
 					sym = 0;
 				else	sym = SDLK_EQUALS;
 				break;
-			case 178: /* the '²' key */
+			case 178: /* the 'ï¿½' key */
 				sym = '~';
 				break;
 			default:
+#if SDLQUAKE == 2
+				if (sym > 255)
+#else
 			/* If we are not directly handled and still above 255,
 			 * just force it to 0. kill unsupported international
 			 * characters, too.  */
 				if ((sym >= SDLK_WORLD_0 && sym <= SDLK_WORLD_95) ||
 									sym > 255)
+#endif
 					sym = 0;
 				break;
 			}

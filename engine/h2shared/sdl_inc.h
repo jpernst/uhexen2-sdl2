@@ -93,7 +93,6 @@ hence the SDL_NEW_VERSION_REJECT macro below.
 #error SDL version found is too old
 #endif
 
-
 /* the defines below are actually part of SDL_GLattr enums in SDL
    versions supporting that relevant feature. */
 

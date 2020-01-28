@@ -513,7 +513,11 @@ static qboolean VID_SetMode (int modenum)
 
 	glcontext = SDL_GL_CreateContext(window);
 	if (!glcontext)
+	{
+		SDL_DestroyWindow(window);
+		window = NULL;
 		Sys_Error ("Couldn't create gl context: %s", SDL_GetError());
+	}
 
 	VID_SetIcon();
 	SDL_SetWindowTitle(window, WM_TITLEBAR_TEXT);

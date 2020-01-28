@@ -51,7 +51,7 @@
 #endif	/* SDLQUAKE */
 
 #if SDLQUAKE == 2
-extern SDL_Window *screen;
+extern SDL_Window *window;
 #endif
 
 // heapsize: minimum 16mb, standart 32 mb, max is 96 mb.
@@ -804,7 +804,7 @@ int main (int argc, char **argv)
 	    {
 #if defined(SDLQUAKE)
 #if SDLQUAKE == 2
-		appState = SDL_GetWindowFlags(screen);
+		appState = SDL_GetWindowFlags(window);
 #else
 		appState = SDL_GetAppState();
 #endif

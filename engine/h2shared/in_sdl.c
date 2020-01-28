@@ -28,7 +28,7 @@
 
 
 #if SDLQUAKE == 2
-extern SDL_Window *screen;
+extern SDL_Window *window;
 #endif
 
 static qboolean	prev_gamekey;
@@ -458,7 +458,7 @@ void IN_Move (usercmd_t *cmd)
 	}
 
 #if SDLQUAKE == 2
-	app_active = (SDL_GetWindowFlags(screen) & SDL_WINDOW_SHOWN) != 0;
+	app_active = (SDL_GetWindowFlags(window) & SDL_WINDOW_SHOWN) != 0;
 #else
 	app_active = ((SDL_GetAppState() & SDL_APPACTIVE) != 0);
 #endif

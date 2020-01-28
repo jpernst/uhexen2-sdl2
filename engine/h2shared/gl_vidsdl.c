@@ -117,7 +117,7 @@ typedef struct {
 static attributes_t	vid_attribs;
 
 #if SDLQUAKE == 2
-SDL_Window	*screen;
+SDL_Window	*window;
 SDL_GLContext glcontext;
 #else
 static SDL_Surface	*screen;
@@ -340,7 +340,7 @@ static void VID_SetIcon (void)
 	}
 
 #if SDLQUAKE == 2
-	SDL_SetWindowIcon(screen, icon);
+	SDL_SetWindowIcon(window, icon);
 #else
 	SDL_WM_SetIcon(icon, NULL);
 #endif
@@ -469,7 +469,7 @@ static qboolean VID_SetMode (int modenum)
 
 #if SDLQUAKE == 2
 	// Create the window without the fullscreen flag first so we can query its display and check the desktop resolution
-	screen = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL);
 
 	// Start with empty flags since the window is already created with OpenGL.
 	flags = 0;
@@ -478,10 +478,10 @@ static qboolean VID_SetMode (int modenum)
 		flags = SDL_WINDOW_FULLSCREEN;
 
 		// Try to check the desktop resolution. If it matches the window size, use a borderless window
-		display_index = SDL_GetWindowDisplayIndex(screen);
+		display_index = SDL_GetWindowDisplayIndex(window);
 		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
 		{
-			SDL_GetWindowSize(screen, &screen_w, &screen_h);
+			SDL_GetWindowSize(window, &screen_w, &screen_h);
 			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
 			{
 				flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -495,7 +495,7 @@ static qboolean VID_SetMode (int modenum)
 	// Put the OpenGL flag back in case we need to remake the window.
 	flags |= SDL_WINDOW_OPENGL;
 
-	if (!screen)
+	if (!window)
 	{
 		if (!multisample)
 			Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
@@ -505,20 +505,20 @@ static qboolean VID_SetMode (int modenum)
 			multisample = 0;
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisample);
-			screen = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
-			if (!screen)
+			window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
+			if (!window)
 				Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
 		}
 	}
 
-	glcontext = SDL_GL_CreateContext(screen);
+	glcontext = SDL_GL_CreateContext(window);
 	if (!glcontext)
 		Sys_Error ("Couldn't create gl context: %s", SDL_GetError());
 
 	VID_SetIcon();
-	SDL_SetWindowTitle(screen, WM_TITLEBAR_TEXT);
+	SDL_SetWindowTitle(window, WM_TITLEBAR_TEXT);
 
-	is_fullscreen = (SDL_GetWindowFlags(screen) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) ? 1 : 0;
+	is_fullscreen = (SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) ? 1 : 0;
 #else
 	//flags = (SDL_OPENGL|SDL_NOFRAME);
 	flags = (SDL_OPENGL);
@@ -1121,7 +1121,7 @@ void GL_EndRendering (void)
 {
 	if (!scr_skipupdate)
 #if SDLQUAKE == 2
-		SDL_GL_SwapWindow(screen);
+		SDL_GL_SwapWindow(window);
 #else
 		SDL_GL_SwapBuffers();
 #endif
@@ -1339,7 +1339,7 @@ static void VID_ChangeVideoMode (int newmode)
 {
 	int	temp;
 
-	if (!screen)
+	if (!window)
 		return;
 
 	temp = scr_disabled_for_loading;
@@ -1368,7 +1368,7 @@ static void VID_ChangeVideoMode (int newmode)
 	// Kill device and rendering contexts
 #if SDLQUAKE == 2
 	SDL_GL_DeleteContext(glcontext);
-	SDL_DestroyWindow(screen);
+	SDL_DestroyWindow(window);
 #else
 	SDL_FreeSurface(screen);
 #endif
@@ -1940,8 +1940,8 @@ void	VID_Shutdown (void)
 #if SDLQUAKE == 2
 	if (glcontext)
 		SDL_GL_DeleteContext(glcontext);
-	if (screen)
-		SDL_DestroyWindow(screen);
+	if (window)
+		SDL_DestroyWindow(window);
 #endif
 
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -1970,13 +1970,17 @@ void VID_ToggleFullscreen (void)
 		return;
 	if (!num_fmodes)
 		return;
+#if SDLQUAKE == 2
+	if (!window)
+#else
 	if (!screen)
+#endif
 		return;
 
 	S_ClearBuffer ();
 
 #if SDLQUAKE == 2
-	is_fullscreen = SDL_GetWindowFlags(screen) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+	is_fullscreen = SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
 	// If we're switching to fullscreen, check to see if our window has the same size as the desktop.
 	// If it does, use a borderless window instead of "real" fullscreen for better wm integration.
@@ -1984,10 +1988,10 @@ void VID_ToggleFullscreen (void)
 	{
 		fullscreen_flag = SDL_WINDOW_FULLSCREEN;
 
-		display_index = SDL_GetWindowDisplayIndex(screen);
+		display_index = SDL_GetWindowDisplayIndex(window);
 		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
 		{
-			SDL_GetWindowSize(screen, &screen_w, &screen_h);
+			SDL_GetWindowSize(window, &screen_w, &screen_h);
 			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
 			{
 				fullscreen_flag = SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -2000,7 +2004,7 @@ void VID_ToggleFullscreen (void)
 	else
 		fullscreen_flag = 0;
 
-	if (SDL_SetWindowFullscreen(screen, fullscreen_flag) == 0)
+	if (SDL_SetWindowFullscreen(window, fullscreen_flag) == 0)
 #else
 	// This doesn't seem to cause any trouble even
 	// with is_3dfx == true and FX_GLX_MESA == f

@@ -471,7 +471,7 @@ static qboolean VID_SetMode (int modenum)
 	// Create the window without the fullscreen flag first so we can query its display and check the desktop resolution
 	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL);
 
-	// Start with empty flags since the window is already created with OpenGL.
+	// Start with empty flags until we determine the fullscreen mode
 	flags = 0;
 	if (vid_config_fscr.integer)
 	{
@@ -492,9 +492,6 @@ static qboolean VID_SetMode (int modenum)
 			Con_Printf ("Failed to query desktop display mode; using native fullscreen\n");
 	}
 
-	// Put the OpenGL flag back in case we need to remake the window.
-	flags |= SDL_WINDOW_OPENGL;
-
 	if (!window)
 	{
 		if (!multisample)
@@ -505,11 +502,15 @@ static qboolean VID_SetMode (int modenum)
 			multisample = 0;
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisample);
+			// Add OpenGL flag back in
+			flags |= SDL_WINDOW_OPENGL;
 			window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
 			if (!window)
 				Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
 		}
-	}
+	} else
+		// Now that we have the fullscreen flags, set them
+		SDL_SetWindowFullscreen(window, flags);
 
 	glcontext = SDL_GL_CreateContext(window);
 	if (!glcontext)
@@ -1464,12 +1465,12 @@ static void VID_PrepareModes (void)
 {
 	int	i, j;
 	qboolean	not_multiple;
+	SDL_Rect	**sdl_modes;
 #if SDLQUAKE == 2
 	int k;
 	SDL_DisplayMode	mode;
 	SDL_Rect	mode_rects[MAX_MODE_LIST];
 	SDL_Rect	*ptr_array[MAX_MODE_LIST + 1];
-	SDL_Rect	**sdl_modes;
 #endif
 
 #if SDLQUAKE == 2

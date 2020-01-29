@@ -63,8 +63,9 @@ static int	*nummodes;
 //static int	bpp = 8;
 #if SDLQUAKE == 2
 SDL_Window *window;
-// SDL2 does not allow control of window surface format, so we need to use an intermediary
-SDL_Surface *screen_native;
+static SDL_Renderer *renderer;
+static SDL_Texture *screen_tex;
+static SDL_Surface *tex_surface;
 #endif
 static SDL_Surface	*screen;
 static qboolean	vid_menu_fs;
@@ -580,17 +581,26 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 	int display_index;
 	SDL_DisplayMode desktop_mode;
 	int screen_w, screen_h;
+	int format;
+	void *pixels;
+	int pitch;
 #endif
 
 	in_mode_set = true;
 
 #if SDLQUAKE == 2
-	if (screen)
+	if (window)
 	{
 		SDL_FreeSurface(screen);
 		screen = NULL;
-		screen_native = NULL;
+		SDL_FreeSurface(tex_surface);
+		tex_surface = NULL;
+		SDL_DestroyTexture(screen_tex);
+		screen_tex = NULL;
+		SDL_DestroyRenderer(renderer);
+		renderer = NULL;
 		SDL_DestroyWindow(window);
+		window = NULL;
 	}
 
 	flags = 0;
@@ -623,23 +633,58 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 	VID_SetIcon();
 	SDL_SetWindowTitle(window, WM_TITLEBAR_TEXT);
 
-	screen_native = SDL_GetWindowSurface(window);
-	if (!screen_native)
+	renderer = SDL_CreateRenderer(window, -1, 0);
+	if (!renderer)
 	{
 		SDL_DestroyWindow(window);
 		window = NULL;
 		return false;
 	}
+
+	format = SDL_GetWindowPixelFormat(window);
+	if (format == SDL_PIXELFORMAT_UNKNOWN)
+		format = SDL_PIXELFORMAT_RGBA32;
+	screen_tex = SDL_CreateTexture(renderer, format, SDL_TEXTUREACCESS_STREAMING, modelist[modenum].width, modelist[modenum].height);
+	if (!screen_tex)
+	{
+		SDL_DestroyRenderer(renderer);
+		renderer = NULL;
+		SDL_DestroyWindow(window);
+		window = NULL;
+		return false;
+	}
+
+	// Create a "fake" surface that we can redirect to the texture memory when we lock it.
+	SDL_LockTexture(screen_tex, NULL, &pixels, &pitch);
+	tex_surface = SDL_CreateRGBSurfaceWithFormatFrom(pixels, modelist[modenum].width, modelist[modenum].height, SDL_BITSPERPIXEL(format), pitch, format);
+	SDL_UnlockTexture(screen_tex);
 
 	screen = SDL_CreateRGBSurface(0, modelist[modenum].width, modelist[modenum].height, 8, 0, 0, 0, 0);
-	if (!screen)
+
+	if (!tex_surface || !screen)
 	{
-		screen_native = NULL;
+		if (tex_surface)
+		{
+			SDL_FreeSurface(tex_surface);
+			tex_surface = NULL;
+		}
+		if (screen)
+		{
+			SDL_FreeSurface(screen);
+			screen = NULL;	
+		}
+
+		SDL_DestroyTexture(screen_tex);
+		screen_tex = NULL;
+		SDL_DestroyRenderer(renderer);
+		renderer = NULL;
 		SDL_DestroyWindow(window);
 		window = NULL;
+
 		return false;
 	}
 
+	tex_surface->pixels = NULL;
 	is_fullscreen = (SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) ? 1 : 0;
 #else
 	if (screen)
@@ -977,7 +1022,11 @@ FlipScreen
 static void FlipScreen (vrect_t *rects)
 {
 #if SDLQUAKE == 2
+	vrect_t *orig_rects = rects;
 	SDL_Rect sdl_rect;
+	int pitch = 0;
+
+	SDL_LockTexture(screen_tex, NULL, &tex_surface->pixels, &pitch);
 #endif
 
 	while (rects)
@@ -988,14 +1037,32 @@ static void FlipScreen (vrect_t *rects)
 		sdl_rect.w = rects->width;
 		sdl_rect.h = rects->height;
 
-		SDL_BlitSurface(screen, &sdl_rect, screen_native, &sdl_rect);
-		SDL_UpdateWindowSurfaceRects(window, &sdl_rect, 1);
+		SDL_BlitSurface(screen, &sdl_rect, tex_surface, &sdl_rect);
 #else
 		SDL_UpdateRect (screen, rects->x, rects->y, rects->width,
 				rects->height);
 #endif
 		rects = rects->pnext;
 	}
+
+#if SDLQUAKE == 2
+	SDL_UnlockTexture(screen_tex);
+	tex_surface->pixels = NULL;
+
+	rects = orig_rects;
+	while (rects)
+	{
+		sdl_rect.x = rects->x;
+		sdl_rect.y = rects->y;
+		sdl_rect.w = rects->width;
+		sdl_rect.h = rects->height;
+
+		SDL_RenderCopy(renderer, screen_tex, &sdl_rect, &sdl_rect);
+		rects = rects->pnext;
+	}
+
+	SDL_RenderPresent(renderer);
+#endif
 }
 
 void VID_Update (vrect_t *rects)
@@ -1060,6 +1127,7 @@ void D_EndDirectRect (int x, int y, int width, int height)
 {
 #if SDLQUAKE == 2
 	SDL_Rect sdl_rect;
+	int pitch;
 #endif
 
 //	these bits from quakeforge
@@ -1073,7 +1141,13 @@ void D_EndDirectRect (int x, int y, int width, int height)
 	sdl_rect.y = y;
 	sdl_rect.w = width;
 	sdl_rect.h = height;
-	SDL_UpdateWindowSurfaceRects(window, &sdl_rect, 1);
+
+	SDL_LockTexture(screen_tex, NULL, &tex_surface->pixels, &pitch);
+	SDL_BlitSurface(screen, &sdl_rect, tex_surface, &sdl_rect);
+	SDL_UnlockTexture(screen_tex);
+	tex_surface->pixels = NULL;
+	SDL_RenderCopy(renderer, screen_tex, &sdl_rect, &sdl_rect);
+	SDL_RenderPresent(renderer);
 #else
 	SDL_UpdateRect (screen, x, y, width, height);
 #endif
@@ -1244,7 +1318,6 @@ void VID_ToggleFullscreen (void)
 	{
 #if SDLQUAKE == 2
 		is_fullscreen = !is_fullscreen;
-		screen_native = SDL_GetWindowSurface(window);
 #else
 		is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
 #endif

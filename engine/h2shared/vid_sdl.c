@@ -61,6 +61,11 @@ static int	num_fmodes;
 static int	num_wmodes;
 static int	*nummodes;
 //static int	bpp = 8;
+#if SDLQUAKE == 2
+SDL_Window *window;
+// SDL2 does not allow control of window surface format, so we need to use an intermediary
+SDL_Surface *screen_native;
+#endif
 static SDL_Surface	*screen;
 static qboolean	vid_menu_fs;
 static qboolean	fs_toggle_works = true;
@@ -250,16 +255,29 @@ static void VID_SetIcon (void)
 	if (icon == NULL)
 		return;
 
+#if SDLQUAKE == 2
+	SDL_SetColorKey(icon, SDL_TRUE, 0);
+#else
 	SDL_SetColorKey(icon, SDL_SRCCOLORKEY, 0);
+#endif
 
 	color.r = 255;
 	color.g = 255;
 	color.b = 255;
-	SDL_SetColors(icon, &color, 0, 1);	/* just in case */
+	/* just in case */
+#if SDLQUAKE == 2
+	SDL_SetPaletteColors(icon->format->palette, &color, 0, 1);
+#else
+	SDL_SetColors(icon, &color, 0, 1);	
+#endif
 	color.r = 192;
 	color.g = 0;
 	color.b = 0;
+#if SDLQUAKE == 2
+	SDL_SetPaletteColors(icon->format->palette, &color, 1, 1);
+#else
 	SDL_SetColors(icon, &color, 1, 1);
+#endif
 
 	ptr = (Uint8 *)icon->pixels;
 	/* one bit represents a pixel, black or white:  each
@@ -273,8 +291,13 @@ static void VID_SetIcon (void)
 		}
 	}
 
+#if SDLQUAKE == 2
+	SDL_SetWindowIcon(window, icon);
+#else
 	SDL_WM_SetIcon(icon, NULL);
+#endif
 	SDL_FreeSurface(icon);
+
 #endif /* !OSX */
 }
 
@@ -292,11 +315,69 @@ static int sort_modes (const void *arg1, const void *arg2)
 	//	return a2->w - a1->w;	// highres-to-lowres
 }
 
-static void VID_PrepareModes (SDL_Rect **sdl_modes)
+static void VID_PrepareModes (void)
 {
 	int	i, j;
 	qboolean	have_mem, is_multiple;
+	SDL_Rect	**sdl_modes;
 	SDL_Rect	**cpy_modes;
+#if SDLQUAKE == 2
+	int k;
+	SDL_DisplayMode	mode;
+	SDL_Rect	mode_rects[MAX_MODE_LIST];
+	SDL_Rect	*ptr_array[MAX_MODE_LIST + 1];
+#endif
+
+#if SDLQUAKE == 2
+	// SDL2 does not have a function to get the full modelist, so we must build it manually.
+
+	num_fmodes = 0;
+
+	// Fill the list with all modes supported by the first display.
+	for (i = 0; i < SDL_GetNumDisplayModes(0) && i < MAX_MODE_LIST; i++)
+	{
+		SDL_GetDisplayMode(0, i, &mode);
+		mode_rects[num_fmodes].x = 0;
+		mode_rects[num_fmodes].y = 0;
+		mode_rects[num_fmodes].w = mode.w;
+		mode_rects[num_fmodes].h = mode.h;
+		num_fmodes++;
+	}
+
+	// Check the other displays and add any modes that aren't already in the list
+	for (i = 1; i < SDL_GetNumVideoDisplays(); i++)
+		for (j = 0; j < SDL_GetNumDisplayModes(i) && num_fmodes < MAX_MODE_LIST; j++)
+		{
+			SDL_GetDisplayMode(i, j, &mode);
+			mode_rects[num_fmodes].x = 0;
+			mode_rects[num_fmodes].y = 0;
+			mode_rects[num_fmodes].w = mode.w;
+			mode_rects[num_fmodes].h = mode.h;
+			num_fmodes++;
+
+			for (k = 0; k < num_fmodes; k++)
+			{
+				if (mode.w == mode_rects[k].w && mode.h == mode_rects[k].h)
+				{
+					num_fmodes--;
+					break;
+				}
+			}
+		}
+
+	if (num_fmodes > 0)
+	{
+		for (i = 0; i < num_fmodes; i++)
+			ptr_array[i] = &mode_rects[i];
+		ptr_array[num_fmodes] = NULL;
+		sdl_modes = ptr_array;
+	}
+	else
+		sdl_modes = NULL;
+#else
+	// retrieve the list of fullscreen modes
+	sdl_modes = SDL_ListModes(NULL, SDL_OPENGL|SDL_FULLSCREEN);
+#endif
 
 	num_fmodes = 0;
 	num_wmodes = 0;
@@ -495,9 +576,72 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 {
 	Uint32 flags;
 	int	is_fullscreen;
+#if SDLQUAKE == 2
+	int display_index;
+	SDL_DisplayMode desktop_mode;
+	int screen_w, screen_h;
+#endif
 
 	in_mode_set = true;
 
+#if SDLQUAKE == 2
+	if (screen)
+	{
+		SDL_FreeSurface(screen);
+		screen = NULL;
+		screen_native = NULL;
+		SDL_DestroyWindow(window);
+	}
+
+	flags = 0;
+	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
+
+	if (!window)
+		return false;
+
+	if (vid_config_fscr.integer)
+	{
+		flags = SDL_WINDOW_FULLSCREEN;
+
+		// Try to check the desktop resolution. If it matches the window size, use a borderless window
+		display_index = SDL_GetWindowDisplayIndex(window);
+		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
+		{
+			SDL_GetWindowSize(window, &screen_w, &screen_h);
+			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
+			{
+				flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
+				Con_Printf ("Fullscreen res matches desktop; using borderless window\n");
+			}
+		}
+		else
+			Con_Printf ("Failed to query desktop display mode; using native fullscreen\n");
+	}
+
+	SDL_SetWindowFullscreen(window, flags);
+
+	VID_SetIcon();
+	SDL_SetWindowTitle(window, WM_TITLEBAR_TEXT);
+
+	screen_native = SDL_GetWindowSurface(window);
+	if (!screen_native)
+	{
+		SDL_DestroyWindow(window);
+		window = NULL;
+		return false;
+	}
+
+	screen = SDL_CreateRGBSurface(0, modelist[modenum].width, modelist[modenum].height, 8, 0, 0, 0, 0);
+	if (!screen)
+	{
+		screen_native = NULL;
+		SDL_DestroyWindow(window);
+		window = NULL;
+		return false;
+	}
+
+	is_fullscreen = (SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) ? 1 : 0;
+#else
 	if (screen)
 		SDL_FreeSurface(screen);
 
@@ -511,6 +655,10 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 	screen = SDL_SetVideoMode(modelist[modenum].width, modelist[modenum].height, modelist[modenum].bpp, flags);
 	if (!screen)
 		return false;
+
+	is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
+	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_ICON_TEXT);
+#endif
 
 	// initial success. adjust vid vars.
 	vid.height = vid.conheight = modelist[modenum].height;
@@ -527,7 +675,6 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 
 	// real success. set vid_modenum properly.
 	vid_modenum = modenum;
-	is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
 	modestate = (is_fullscreen) ? MS_FULLDIB : MS_WINDOWED;
 	Cvar_SetValueQuick (&vid_config_swx, modelist[vid_modenum].width);
 	Cvar_SetValueQuick (&vid_config_swy, modelist[vid_modenum].height);
@@ -538,8 +685,6 @@ static qboolean VID_SetMode (int modenum, const unsigned char *palette)
 	ClearAllStates();
 
 	VID_SetPalette (palette);
-
-	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_ICON_TEXT);
 
 	Con_SafePrintf ("Video Mode: %ux%ux%d\n", vid.width, vid.height, modelist[modenum].bpp);
 
@@ -654,7 +799,11 @@ void VID_SetPalette (const unsigned char *palette)
 		colors[i].b = *palette++;
 	}
 
+#if SDLQUAKE == 2
+	SDL_SetPaletteColors(screen->format->palette, colors, 0, 256);
+#else
 	SDL_SetColors(screen, colors, 0, 256);
+#endif
 }
 
 
@@ -672,7 +821,6 @@ VID_Init
 void VID_Init (const unsigned char *palette)
 {
 	int		width, height, i, temp;
-	SDL_Rect	**enumlist;
 	const char	*read_vars[] = {
 				"vid_config_fscr",
 				"vid_config_swx",
@@ -703,10 +851,8 @@ void VID_Init (const unsigned char *palette)
 			Sys_Error("Couldn't init video: %s", SDL_GetError());
 	}
 
-	// retrieve the list of fullscreen modes
-	enumlist = SDL_ListModes(NULL, SDL_SWSURFACE|SDL_HWPALETTE|SDL_FULLSCREEN);
 	// prepare the modelists, find the actual modenum for vid_default
-	VID_PrepareModes(enumlist);
+	VID_PrepareModes();
 
 	// set vid_mode to our safe default first
 	Cvar_SetValueQuick (&vid_mode, vid_default);
@@ -830,10 +976,24 @@ FlipScreen
 */
 static void FlipScreen (vrect_t *rects)
 {
+#if SDLQUAKE == 2
+	SDL_Rect sdl_rect;
+#endif
+
 	while (rects)
 	{
+#if SDLQUAKE == 2
+		sdl_rect.x = rects->x;
+		sdl_rect.y = rects->y;
+		sdl_rect.w = rects->width;
+		sdl_rect.h = rects->height;
+
+		SDL_BlitSurface(screen, &sdl_rect, screen_native, &sdl_rect);
+		SDL_UpdateWindowSurfaceRects(window, &sdl_rect, 1);
+#else
 		SDL_UpdateRect (screen, rects->x, rects->y, rects->width,
 				rects->height);
+#endif
 		rects = rects->pnext;
 	}
 }
@@ -898,12 +1058,25 @@ D_EndDirectRect
 */
 void D_EndDirectRect (int x, int y, int width, int height)
 {
+#if SDLQUAKE == 2
+	SDL_Rect sdl_rect;
+#endif
+
 //	these bits from quakeforge
 	if (!screen)
 		return;
 	if (x < 0)
 		x = screen->w + x - 1;
+
+#if SDLQUAKE == 2
+	sdl_rect.x = x;
+	sdl_rect.y = y;
+	sdl_rect.w = width;
+	sdl_rect.h = height;
+	SDL_UpdateWindowSurfaceRects(window, &sdl_rect, 1);
+#else
 	SDL_UpdateRect (screen, x, y, width, height);
+#endif
 }
 
 
@@ -1019,19 +1192,62 @@ extern qboolean menu_disabled_mouse;
 void VID_ToggleFullscreen (void)
 {
 	int	is_fullscreen;
+#if SDLQUAKE == 2
+	int display_index;
+	SDL_DisplayMode desktop_mode;
+	int screen_w, screen_h;
+	int fullscreen_flag;
+#endif
 
 	if (!fs_toggle_works)
 		return;
 	if (!num_fmodes)
 		return;
+#if SDLQUAKE == 2
+	if (!window)
+#else
 	if (!screen)
+#endif
 		return;
 
 	S_ClearBuffer ();
 
-	if (SDL_WM_ToggleFullScreen(screen) == 1)
+#if SDLQUAKE == 2
+	is_fullscreen = SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+
+	// If we're switching to fullscreen, check to see if our window has the same size as the desktop.
+	// If it does, use a borderless window instead of "real" fullscreen for better wm integration.
+	if (!is_fullscreen)
 	{
+		fullscreen_flag = SDL_WINDOW_FULLSCREEN;
+
+		display_index = SDL_GetWindowDisplayIndex(window);
+		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
+		{
+			SDL_GetWindowSize(window, &screen_w, &screen_h);
+			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
+			{
+				fullscreen_flag = SDL_WINDOW_FULLSCREEN_DESKTOP;
+				Con_Printf ("Fullscreen res matches desktop; using borderless window\n");
+			}
+		}
+		else
+			Con_Printf ("Failed to query desktop display mode; using native fullscreen\n");
+	}
+	else
+		fullscreen_flag = 0;
+
+	if (SDL_SetWindowFullscreen(window, fullscreen_flag) == 0)
+#else
+	if (SDL_WM_ToggleFullScreen(screen) == 1)
+#endif
+	{
+#if SDLQUAKE == 2
+		is_fullscreen = !is_fullscreen;
+		screen_native = SDL_GetWindowSurface(window);
+#else
 		is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
+#endif
 		Cvar_SetValueQuick(&vid_config_fscr, is_fullscreen);
 		modestate = (is_fullscreen) ? MS_FULLDIB : MS_WINDOWED;
 		if (is_fullscreen)
@@ -1053,7 +1269,11 @@ void VID_ToggleFullscreen (void)
 	else
 	{
 		fs_toggle_works = false;
+#if SDLQUAKE == 2
+		Con_Printf ("SDL_SetWindowFulscreen failed\n");
+#else
 		Con_Printf ("SDL_WM_ToggleFullScreen failed\n");
+#endif
 	}
 }
 

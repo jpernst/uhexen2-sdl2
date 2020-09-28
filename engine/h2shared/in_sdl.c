@@ -48,8 +48,10 @@ static int buttonremap[] =
 	K_MOUSE1,
 	K_MOUSE3,	/* right button		*/
 	K_MOUSE2,	/* middle button	*/
-	//K_MWHEELUP,
-	//K_MWHEELDOWN,
+#if SDLQUAKE == 1
+	K_MWHEELUP,
+	K_MWHEELDOWN,
+#endif
 	K_MOUSE4,
 	K_MOUSE5
 };
@@ -1212,12 +1214,16 @@ void IN_SendKeyEvents (void)
 			}
 			Key_Event(buttonremap[event.button.button - 1], event.button.state == SDL_PRESSED);
 			break;
+
+#if SDLQUAKE == 2
 		case SDL_MOUSEWHEEL:
 			if (!mouseactive || in_mode_set)
 				break;
-			Key_Event( (event.wheel.y > 0 ? K_MWHEELUP : K_MWHEELDOWN), true); //down
-			Key_Event( (event.wheel.y > 0 ? K_MWHEELUP : K_MWHEELDOWN), false);	//up
+			Key_Event( (event.wheel.y > 0 ? K_MWHEELUP : K_MWHEELDOWN), true);
+			Key_Event( (event.wheel.y > 0 ? K_MWHEELUP : K_MWHEELDOWN), false);
 			break;
+#endif
+
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP:
 			if (in_mode_set)

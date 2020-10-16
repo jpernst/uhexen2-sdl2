@@ -430,7 +430,7 @@ static qboolean VID_SetMode (int modenum)
 #if SDLQUAKE == 2
 	int display_index;
 	SDL_DisplayMode desktop_mode;
-	int screen_w, screen_h;
+	int screen_w, screen_h, scaling_factor = 100;
 #endif
 
 	in_mode_set = true;
@@ -469,7 +469,7 @@ static qboolean VID_SetMode (int modenum)
 
 #if SDLQUAKE == 2
 	// Create the window without the fullscreen flag first so we can query its display and check the desktop resolution
-	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI);
 
 	// Start with empty flags until we determine the fullscreen mode
 	flags = 0;
@@ -481,7 +481,15 @@ static qboolean VID_SetMode (int modenum)
 		display_index = SDL_GetWindowDisplayIndex(window);
 		if (display_index >= 0 && SDL_GetDesktopDisplayMode(display_index, &desktop_mode) == 0)
 		{
+			int drawable_w, drawable_h;
 			SDL_GetWindowSize(window, &screen_w, &screen_h);
+			SDL_GL_GetDrawableSize(window, &drawable_w, &drawable_h);
+
+			scaling_factor = (100 * drawable_w) / screen_w;
+
+			if (scaling_factor != 100)
+				Con_Printf ("High DPI scaling in effect! (%d%%)\n", scaling_factor);
+
 			if (screen_w == desktop_mode.w && screen_h == desktop_mode.h)
 			{
 				flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -503,7 +511,7 @@ static qboolean VID_SetMode (int modenum)
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, multisample);
 			// Add OpenGL flag back in
-			flags |= SDL_WINDOW_OPENGL;
+			flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
 			window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, modelist[modenum].width, modelist[modenum].height, flags);
 			if (!window)
 				Sys_Error ("Couldn't set video mode: %s", SDL_GetError());
@@ -511,6 +519,10 @@ static qboolean VID_SetMode (int modenum)
 	} else
 		// Now that we have the fullscreen flags, set them
 		SDL_SetWindowFullscreen(window, flags);
+
+	// Modify mode with real width and height
+	modelist[modenum].width = modelist[modenum].width * scaling_factor / 100;
+	modelist[modenum].height = modelist[modenum].height * scaling_factor / 100;
 
 	glcontext = SDL_GL_CreateContext(window);
 	if (!glcontext)
@@ -1653,7 +1665,7 @@ no_fmodes:
 		// as the highest reported one.
 		Con_SafePrintf ("WARNING: 640x480 not found in fullscreen modes\n"
 				"Using the largest reported dimension as default\n");
-		vid_default = num_fmodes;
+		vid_default = num_fmodes - 1;
 	}
 
 	// limit the windowed (standart) modes list to desktop dimensions

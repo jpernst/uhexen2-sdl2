@@ -302,9 +302,16 @@ CPUFLAGS=
 # @rpath can be used when targeting 10.5+
 USE_RPATH=no
 ifeq ($(MACH_TYPE),x86)
+ifeq ($(SDL_API),2)
+# sdl2 needs targetting 10.5+
+# as of v2.0.5, sdl2 targets 10.6+
+CFLAGS  +=-mmacosx-version-min=10.6
+LDFLAGS +=-mmacosx-version-min=10.6
+else
 # x86 requires 10.4.
 CFLAGS  +=-mmacosx-version-min=10.4
 LDFLAGS +=-mmacosx-version-min=10.4
+endif
 endif
 ifeq ($(MACH_TYPE),ppc)
 # require 10.2 for ppc builds (midi_osx.c requirement.)
@@ -370,7 +377,12 @@ ifneq ($(SDL_FRAMEWORK_PATH),)
 SDL_LIBS  +=-F$(SDL_FRAMEWORK_PATH)
 SDL_CFLAGS+=-F$(SDL_FRAMEWORK_PATH)
 endif
-SDL_LIBS  +=-Wl,-framework,SDL -Wl,-framework,Cocoa
+ifeq ($(SDL_API),2)
+SDL_FRAMEWORK_NAME = SDL2
+else
+SDL_FRAMEWORK_NAME = SDL
+endif
+SDL_LIBS  +=-Wl,-framework,$(SDL_FRAMEWORK_NAME) -Wl,-framework,Cocoa
 CFLAGS  += $(SDL_CFLAGS)
 LDFLAGS += $(SDL_LIBS)
 
@@ -1502,7 +1514,9 @@ SYSOBJ_SOFT_VID:= vid_sdl.o
 SYSOBJ_NET := net_bsd.o net_udp.o
 SYSOBJ_SYS := sys_unix.o
 SYSOBJ_SYS += sys_osx.o
+ifeq ($(SDL_API),1)
 SYSOBJ_SYS += SDLMain.o
+endif
 endif
 ifeq ($(TARGET_OS),aros)
 ifeq ($(USE_SDL),yes)

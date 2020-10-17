@@ -565,7 +565,7 @@ static qboolean VID_SetMode (int modenum)
 
 	is_fullscreen = (screen->flags & SDL_FULLSCREEN) ? 1 : 0;
 
-	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_INTF_TEXT);
+	SDL_WM_SetCaption(WM_TITLEBAR_TEXT, WM_ICON_TEXT);
 #endif
 
 	// set vid_modenum properly and adjust other vars
@@ -1356,8 +1356,13 @@ static void VID_ChangeVideoMode (int newmode)
 {
 	int	temp;
 
+#if SDLQUAKE < 2
+	if (!screen)
+		return;
+#else
 	if (!window)
 		return;
+#endif
 
 	temp = scr_disabled_for_loading;
 	scr_disabled_for_loading = true;
@@ -1720,8 +1725,10 @@ void	VID_Init (const unsigned char *palette)
 	static char fxmesa_env_multitex[32] = "FX_DONT_FAKE_MULTITEX=1";
 	static char fxglide_env_nosplash[32] = "FX_GLIDE_NO_SPLASH=1";
 #endif
-	int	i, temp, width, height;
+#if SDLQUAKE < 2
 	const SDL_version	*sdl_version;
+#endif
+	int	i, temp, width, height;
 	const char	*read_vars[] = {
 				"vid_config_fscr",
 				"vid_config_gl8bit",

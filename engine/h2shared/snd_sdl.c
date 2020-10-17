@@ -83,11 +83,7 @@ static qboolean S_SDL_Init (dma_t *dma)
 {
 	SDL_AudioSpec desired, obtained;
 	int		tmp, val;
-#if SDLQUAKE == 2
-	const char *drivername;
-#else
 	char	drivername[128];
-#endif
 
 	if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
 	{
@@ -161,9 +157,13 @@ static qboolean S_SDL_Init (dma_t *dma)
 	Con_Printf ("SDL audio spec  : %d Hz, %d samples, %d channels\n",
 			obtained.freq, obtained.samples, obtained.channels);
 #if SDLQUAKE == 2
-	drivername = SDL_GetAudioDeviceName(1, SDL_FALSE);
-	if (!drivername)
-		drivername = "(UNKNOWN)";
+	{
+		const char *driver = SDL_GetCurrentAudioDriver();
+		const char *device = SDL_GetAudioDeviceName(0, SDL_FALSE);
+		q_snprintf(drivername, sizeof(drivername), "%s - %s",
+			driver != NULL ? driver : "(UNKNOWN)",
+			device != NULL ? device : "(UNKNOWN)");
+	}
 #else
 	if (SDL_AudioDriverName(drivername, sizeof(drivername)) == NULL)
 		strcpy(drivername, "(UNKNOWN)");

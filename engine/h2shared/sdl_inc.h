@@ -25,24 +25,16 @@
 
 #if !defined(SDLQUAKE)
 #error "SDLQUAKE must be defined in order to use sdl_inc.h"
+#elif ((SDLQUAKE-0) < 1)
+#error "SDLQUAKE defined as an invalid value"
 #endif	/* SDLQUAKE */
 
-#if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
-
-#if SDLQUAKE == 2
-#include <SDL2/SDL.h>
-#else
-#include <SDL/SDL.h>
-#endif
-
-#else
-
-#if SDLQUAKE == 2
-#include "SDL2/SDL.h"
-#else
+#if !(defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG))
 #include "SDL.h"
-#endif
-
+#elif (SDLQUAKE == 1)
+#include <SDL/SDL.h>
+#else
+#include <SDL2/SDL.h>
 #endif
 
 /* =================================================================
@@ -68,11 +60,17 @@ hence the SDL_NEW_VERSION_REJECT macro below.
 #define SDL_MIN_X	2
 #define SDL_MIN_Y	0
 #define SDL_MIN_Z	0
+#if (SDLQUAKE == 1)
+#error "SDLQUAKE defined as 1, but SDL version >= 2"
+#endif
 
 #else	/* SDL-1.2.x */
 
 #define SDL_NEW_VERSION_REJECT	(SDL_VERSIONNUM(1,3,0))	/* reject 1.3.0 and newer at runtime. */
 
+#if (SDLQUAKE > 1)
+#error "SDLQUAKE defined as 2, but SDL version < 2."
+#endif
 #define SDL_MIN_X	1
 #define SDL_MIN_Y	2
 
@@ -92,6 +90,7 @@ hence the SDL_NEW_VERSION_REJECT macro below.
 #if !(SDL_VERSION_ATLEAST(SDL_MIN_X,SDL_MIN_Y,SDL_MIN_Z))
 #error SDL version found is too old
 #endif
+
 
 /* the defines below are actually part of SDL_GLattr enums in SDL
    versions supporting that relevant feature. */

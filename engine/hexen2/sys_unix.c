@@ -50,9 +50,6 @@
 #include "sdl_inc.h"
 #endif	/* SDLQUAKE */
 
-#if SDLQUAKE == 2
-extern SDL_Window *window;
-#endif
 
 // heapsize: minimum 16mb, standart 32 mb, max is 96 mb.
 // -heapsize argument will abide by these min/max settings
@@ -578,12 +575,10 @@ static int Sys_GetUserdir (char *dst, size_t dstsize)
 static void Sys_CheckSDL (void)
 {
 #if defined(SDLQUAKE)
-#if SDLQUAKE == 2
-	SDL_version local_sdl_version;
-#endif
 	const SDL_version *sdl_version;
+#if (SDLQUAKE > 1)
+	SDL_version local_sdl_version;
 
-#if SDLQUAKE == 2
 	SDL_GetVersion(&local_sdl_version);
 	sdl_version = &local_sdl_version;
 #else
@@ -687,6 +682,9 @@ static char	userdir[MAX_OSPATH];
 #endif
 #if defined(SDLQUAKE)
 static Uint8		appState;
+#if (SDLQUAKE > 1)
+extern SDL_Window	*window;
+#endif
 #endif
 
 int main (int argc, char **argv)
@@ -803,34 +801,33 @@ int main (int argc, char **argv)
 	    else
 	    {
 #if defined(SDLQUAKE)
-#if SDLQUAKE == 2
+#if (SDLQUAKE > 1)
 		appState = SDL_GetWindowFlags(window);
-#else
-		appState = SDL_GetAppState();
-#endif
 		/* If we have no input focus at all, sleep a bit */
-#if SDLQUAKE == 2
-		if ( !(appState & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_INPUT_FOCUS)) || cl.paused)
-#else
-		if ( !(appState & (SDL_APPMOUSEFOCUS | SDL_APPINPUTFOCUS)) || cl.paused)
-#endif
-		{
+		if ( !(appState & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_INPUT_FOCUS)) || cl.paused) {
 			usleep (16000);
 		}
 		/* If we're minimised, sleep a bit more */
-#if SDLQUAKE == 2
-		if ( !(appState & SDL_WINDOW_SHOWN))
-#else
-		if ( !(appState & SDL_APPACTIVE))
-#endif
-		{
+		if ( !(appState & SDL_WINDOW_SHOWN)) {
 			scr_skipupdate = 1;
 			usleep (32000);
-		}
-		else
-		{
+		} else {
 			scr_skipupdate = 0;
 		}
+#else
+		appState = SDL_GetAppState();
+		/* If we have no input focus at all, sleep a bit */
+		if ( !(appState & (SDL_APPMOUSEFOCUS | SDL_APPINPUTFOCUS)) || cl.paused) {
+			usleep (16000);
+		}
+		/* If we're minimised, sleep a bit more */
+		if ( !(appState & SDL_APPACTIVE)) {
+			scr_skipupdate = 1;
+			usleep (32000);
+		} else {
+			scr_skipupdate = 0;
+		}
+#endif
 #endif	/* SDLQUAKE */
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;

@@ -451,8 +451,14 @@ static void Sys_CheckSDL (void)
 {
 #if defined(SDLQUAKE)
 	const SDL_version *sdl_version;
+#if (SDLQUAKE > 1)
+	SDL_version local_sdl_version;
 
+	SDL_GetVersion(&local_sdl_version);
+	sdl_version = &local_sdl_version;
+#else
 	sdl_version = SDL_Linked_Version();
+#endif
 	Sys_Printf("Found SDL version %i.%i.%i\n",sdl_version->major,sdl_version->minor,sdl_version->patch);
 	if (SDL_VERSIONNUM(sdl_version->major,sdl_version->minor,sdl_version->patch) < SDL_REQUIREDVERSION)
 	{	/*reject running under SDL versions older than what is stated in sdl_inc.h */
@@ -535,6 +541,9 @@ static quakeparms_t	parms;
 static char	cwd[MAX_OSPATH];
 #if defined(SDLQUAKE)
 static Uint8		appState;
+#if (SDLQUAKE > 1)
+extern SDL_Window	*window;
+#endif
 #endif
 
 int main (int argc, char **argv)
@@ -642,22 +651,33 @@ int main (int argc, char **argv)
 	    else
 	    {
 #if defined(SDLQUAKE)
-		appState = SDL_GetAppState();
+#if (SDLQUAKE > 1)
+		appState = SDL_GetWindowFlags(window);
 		/* If we have no input focus at all, sleep a bit */
-		if ( !(appState & (SDL_APPMOUSEFOCUS | SDL_APPINPUTFOCUS)) || cl.paused)
-		{
+		if ( !(appState & (SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_INPUT_FOCUS)) || cl.paused) {
 			DosSleep (16);
 		}
 		/* If we're minimised, sleep a bit more */
-		if ( !(appState & SDL_APPACTIVE))
-		{
+		if ( !(appState & SDL_WINDOW_SHOWN)) {
 			scr_skipupdate = 1;
 			DosSleep (32);
-		}
-		else
-		{
+		} else {
 			scr_skipupdate = 0;
 		}
+#else
+		appState = SDL_GetAppState();
+		/* If we have no input focus at all, sleep a bit */
+		if ( !(appState & (SDL_APPMOUSEFOCUS | SDL_APPINPUTFOCUS)) || cl.paused) {
+			DosSleep (16);
+		}
+		/* If we're minimised, sleep a bit more */
+		if ( !(appState & SDL_APPACTIVE)) {
+			scr_skipupdate = 1;
+			DosSleep (32);
+		} else {
+			scr_skipupdate = 0;
+		}
+#endif
 #endif	/* SDLQUAKE */
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;

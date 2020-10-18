@@ -25,6 +25,9 @@ OSLIBS=$(UHEXEN2_TOP)/oslibs
 
 # GENERAL OPTIONS (customize as required)
 
+# which major SDL version to use (1: SDL-1.2, 2: SDL-2.0)
+SDL_API    = 1
+
 # link to the opengl libraries at compile time? (defaults
 # to no, so the binaries will dynamically load the necessary
 # libraries and functions at runtime.)
@@ -124,20 +127,28 @@ USE_CODEC_OPUS=no
 
 NASMFLAGS=-f obj -d__OS2__ -d_NO_PREFIX
 
+!ifeq SDL_API 2
+SDL_DIR=SDL2
+LIB_SDL=SDL2
+!else
+SDL_DIR=SDL
+LIB_SDL=SDL12
+!endif
+
 !ifndef __UNIX__
 INCLUDES+= -I$(OSLIBS)\os2\codecs\include
 CODECLIBS=  $(OSLIBS)\os2\codecs\lib\
-SDL_CFLAGS=-I$(OSLIBS)\os2\SDL\include
-SDL_LIBS = $(OSLIBS)\os2\SDL\lib\SDL12.lib
+SDL_CFLAGS=-I$(OSLIBS)\os2\$(SDL_DIR)\include
+SDL_LIBS = $(OSLIBS)\os2\$(SDL_DIR)\lib\$(LIB_SDL).lib
 !else
 INCLUDES+= -I$(OSLIBS)/os2/codecs/include
 CODECLIBS=  $(OSLIBS)/os2/codecs/lib/
-SDL_CFLAGS=-I$(OSLIBS)/os2/SDL/include
-SDL_LIBS = $(OSLIBS)/os2/SDL/lib/SDL12.lib
+SDL_CFLAGS=-I$(OSLIBS)/os2/$(SDL_DIR)/include
+SDL_LIBS = $(OSLIBS)/os2/$(SDL_DIR)/lib/$(LIB_SDL).lib
 !endif
 
 # use SDL for now
-CPPFLAGS+= -DSDLQUAKE
+CPPFLAGS+= -DSDLQUAKE=$(SDL_API)
 CFLAGS  += $(SDL_CFLAGS)
 LIBS    += $(SDL_LIBS)
 

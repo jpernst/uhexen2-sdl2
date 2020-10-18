@@ -51,8 +51,7 @@ OSLIBS:=$(UHEXEN2_TOP)/oslibs
 # X directory
 X11BASE    =/usr/X11R6
 
-# which major SDL version to use
-# ignored for legacy platforms without SDL2 support
+# which major SDL version to use (1: SDL-1.2, 2: SDL-2.0)
 SDL_API    = 2
 
 # the sdl-config command
@@ -469,9 +468,16 @@ LDFLAGS += -s
 CFLAGS  += -fno-omit-frame-pointer
 endif
 # using SDL for now:
-SDL_API=1
-SDL_CFLAGS=-I$(OSLIBS)/os2/SDL/include
-SDL_LIBS = -L$(OSLIBS)/os2/SDL/lib -lSDL12
+ifeq ($(SDL_API),2)
+SDL_DIR=SDL2
+LIB_SDL=SDL2
+else
+SDL_DIR=SDL
+LIB_SDL=SDL12
+endif
+
+SDL_CFLAGS=-I$(OSLIBS)/os2/$(SDL_DIR)/include
+SDL_LIBS = -L$(OSLIBS)/os2/$(SDL_DIR)/lib -l$(LIB_SDL)
 USE_SDLCD=yes
 USE_SDLAUDIO=yes
 
@@ -810,6 +816,7 @@ ifeq ($(TARGET_OS),morphos)
 
 # MorphOS builds can use SDL or native code
 USE_SDL=no
+# Use SDL-1.2 for now, if actually using SDL.
 SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
@@ -887,6 +894,7 @@ ifeq ($(TARGET_OS),aros)
 
 # AROS builds can use SDL or native code
 USE_SDL=no
+# Use SDL-1.2 for now, if actually using SDL.
 SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
@@ -973,6 +981,7 @@ USE_CLIB2=yes
 
 # Don't use SDL on AmigaOS
 USE_SDL=no
+# Use SDL-1.2 for now, if actually using SDL.
 SDL_API=1
 ifneq ($(USE_SDL),yes)
 USE_SDLCD=no
